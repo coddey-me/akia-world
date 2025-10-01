@@ -37,7 +37,7 @@ DEFAULT_MAX_CANDIDATES = 15
 MIN_CONTENT_CHUNKS = 3   # if less than this, agent will retry with more candidates
 CHUNK_WORDS = 300
 INTENT_CONFIDENCE_THRESHOLD = 0.35  # include chunk-level intent predictions above this
-FACETS = ["battery", "price", "range", "autonomy", "safety", "manufacturing", "sales", "charging", "software"]
+FACETS = ["research", "comparison", "price", "range", "autonomy", "safety", "manufacturing", "sales", "charging", "software"]
 
 # ---------- Utilities ----------
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
@@ -259,6 +259,9 @@ def decompose_query(user_query: str) -> List[str]:
     # keep it reasonable
     return unique[:20]
 
+
+
+
 # ---------- Agentic pipeline ----------
 class Stage2Agent:
     def __init__(self,
@@ -268,6 +271,35 @@ class Stage2Agent:
         self.intent_predict = load_intent_model(intent_model_dir)
         print("Loading summarizer model:", summarizer_model)
         self.summarizer = load_summarizer(summarizer_model)
+    def combine_top_results(self, merged_intents: List[Dict], top_n: int = 3) -> Dict:
+        """
+        Combine top N intents by confidence into one aggregate summary and source list.
+        """
+        top_intents = merged_intents[:top_n]
+        all_sources = set()
+        combined_sentences = []
+        for intent_data in top_intents:
+            # Aggregate sources
+            for src in intent_data.get("sources", []):
+                all_sources.add(src)
+            # Split summary into sentences and add unique
+            for sent in re.split(r"(?<=[.!?])\s+", intent_data["summary"]):
+                sent = sent.strip()
+                if sent and sent not in combined_sentences:
+                    combined_sentences.append(sent)
+        # Create combined summary text (limit length e.g. first 8 sentences)
+        combined_summary = " ".join(combined_sentences[:8])
+        combined_sources = list(all_sources)
+    
+        # Optionally average confidence across top intents
+        avg_confidence = float(np.mean([i["confidence"] for i in top_intents])) if top_intents else 0.0
+    
+        return {
+            "combined_summary": combined_summary,
+            "combined_sources": combined_sources,
+            "average_confidence": round(avg_confidence, 4),
+            "included_intents": [i["intent"] for i in top_intents]
+        }
 
     def expand_and_search(self, query: str, candidates: int = DEFAULT_MAX_CANDIDATES) -> List[str]:
         """Run decomposition and search to build candidate URL list (raw)."""
@@ -450,6 +482,8 @@ class Stage2Agent:
 
         # 6) Merge records by intent
         merged = self.merge_by_intent(records)
+        combined_result = self.combine_top_results(merged, top_n=3)
+
 
         # 7) Gap detection (coverage)
         coverage = self.detect_gaps(merged)
@@ -469,6 +503,7 @@ class Stage2Agent:
             "sources_tried": candidates,
             "sources_used": good_sources,
             "merged_intents": merged,
+            "combined_result": combined_result,
             "coverage": coverage,
             "action_plan": action_plan,
             "diagnostics": {
@@ -478,8 +513,12 @@ class Stage2Agent:
         }
         return result
 
+
+
+
 # ---------- Main ----------
 def pretty_print_result(res: Dict):
+    combined_result = res.get("combined_result")
     print("\n=== Akia Stage 2 Agentic Result ===\n")
     print("Query:", res["query"])
     print("\nDecomposed sub-queries (sample):")
@@ -502,12 +541,20 @@ def pretty_print_result(res: Dict):
     for a in res["action_plan"]:
         print(" -", a)
     print("\nDiagnostics:", res["diagnostics"])
+    print("\nCombined Top Results Summary:")
+    print(combined_result["combined_summary"])
+    print("\nCombined Sources:")
+    for src in combined_result["combined_sources"]:
+        print(" -", src)
+    print(f"\nAverage Confidence: {combined_result['average_confidence']}")
+    print(f"Included Intents: {combined_result['included_intents']}")
+
     print("\n=== End ===\n")
 
 if __name__ == "__main__":
     # quick interactive example
     agent = Stage2Agent(INTENT_MODEL_DIR, SUMMARIZER_MODEL)
-    test_query = "Compare Tesla and BYD electric cars"
+    test_query = "Compare Kenya to South Korea in terms of GDP"
     out = agent.run(test_query, needed_sources=5, max_candidates=30)
     pretty_print_result(out)
     # Save JSON
