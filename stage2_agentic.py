@@ -36,8 +36,8 @@ USER_AGENT = "Mozilla/5.0 (compatible; AkiaStage2/1.0; +https://example.com)"
 DEFAULT_MAX_CANDIDATES = 15
 MIN_CONTENT_CHUNKS = 3   # if less than this, agent will retry with more candidates
 CHUNK_WORDS = 300
-INTENT_CONFIDENCE_THRESHOLD = 0.35  # include chunk-level intent predictions above this
-FACETS = ["research", "comparison", "price", "range", "autonomy", "safety", "manufacturing", "sales", "charging", "software"]
+INTENT_CONFIDENCE_THRESHOLD = 0.45  # include chunk-level intent predictions above this
+FACETS = ["research", "comparison", "range", "autonomy", "safety", "manufacturing", "sales", "charging", "software"]
 
 # ---------- Utilities ----------
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
